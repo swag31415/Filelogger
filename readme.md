@@ -1,12 +1,13 @@
 # FileLogger
-Logs and displays stats for the files in a given directory
+Logs stats for the files in a given directory
 
 ## Usage
-Run with nimble
-
+1. Build project with nimble
 ```bash
-nimble run filelogger
+nimble build
 ```
+2. Place generated binary in target directory
+3. Run generated binary. Data will be stored in 'foldername_data.json'
 
 ## Program Requirements
 [Nim](https://nim-lang.org/) version 1.0.6 or greater
