@@ -34,3 +34,6 @@ proc get_folder(dir: string): J_Folder =
 proc save_as_json(folder: J_Folder; pretty = true) =
   if (pretty): writeFile(folder.name & "_data.json", (%*folder).pretty())
   else: writeFile(folder.name & "_data.json", $(%*folder))
+
+when isMainModule:
+  getCurrentDir().get_folder().save_as_json()
