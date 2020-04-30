@@ -17,6 +17,7 @@ type
 proc get_folder(dir: string): J_Folder =
   result = J_Folder(name:lastPathPart(dir)) # Make a new J_Folder object
   for kind, path in walkDir(dir): # For every file and folder in the dir
+    if isHidden(path): continue # Ignore hidden stuff
     case kind:
       of pcDir: # If its a dir
         let subdir = get_folder(path) # Recursively turn it into a J_Folder
