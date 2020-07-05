@@ -2,6 +2,7 @@
 
 import os
 import json
+import utils # Import the loading bar
 
 type
   J_Thing = object of RootObj
@@ -13,6 +14,26 @@ type
     folders: seq[J_Folder]
     files: seq[J_File]
 
+var log_thread: Thread[string] # An asyncronus loading bar
+var log_chan: Channel[BiggestInt] # Channel to send completed file sizes
+const n_steps = 20 # Number of steps in the bar
+
+proc log_loop(dir: string) {.thread.} = # The thread loop
+  var total_size, completed: BiggestInt
+  var percent: float
+
+  echo "Calculating Size..."
+  for file in walkDirRec(dir): # Calculates size asyncronusly so for small folders the main loop isn't bogged down
+    total_size += file.getFileSize()
+
+  while completed < total_size:
+    let msg = log_chan.recv()
+    if msg < 0: break # If it gets a negative number break the loop
+
+    completed += msg
+    percent = completed.float() / total_size.float()
+    show_loading_bar(percent, n_steps) # Show the loading bar
+
 # Converts the provided dir into a J_Folder
 proc get_folder(dir: string): J_Folder =
   result = J_Folder(name:lastPathPart(dir)) # Make a new J_Folder object
@@ -23,11 +44,13 @@ proc get_folder(dir: string): J_Folder =
         let subdir = get_folder(path) # Recursively turn it into a J_Folder
         result.folders.add(subdir) # Add it to the folders seq
         result.size += subdir.size # Track its size
+        log_chan.send(subdir.size)
       of pcFile: # If its a file
         let (dir, name, ext) = splitFile(path) # Get its name and extension
         let size = getFileSize(path) # Get its size
         result.files.add(J_File(name:name, ext:ext, size:size)) # Convert it to a J_File and add it to the seq
         result.size += size # Track its size
+        log_chan.send(size)
       else: discard # Don't worry about symblinks and stuff
 
 # Saves the provided J_Folder to JSON. Conversion is done with ``%*``
@@ -36,4 +59,13 @@ proc save_as_json(folder: J_Folder; pretty = true) =
   else: writeFile(folder.name & "_data.json", $(%*folder))
 
 when isMainModule:
-  getCurrentDir().get_folder().save_as_json()
+  let current_dir = getCurrentDir() # The directory the compiled binary is in
+  try:
+    log_chan.open() # Open the channel
+    createThread(log_thread, log_loop, current_dir) # Create the loading bar thread
+    current_dir.get_folder().save_as_json() # Begin the file logging
+    log_chan.send(-1) # It's done! close the loading bar thread
+    show_loading_bar(1.0, n_steps) # Show a 100% done loading bar
+  finally: # When it's done or it errors out
+    stdout.flushFile() # Flush all prints to the terminal
+    log_chan.close() # Close the channel
