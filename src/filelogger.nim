@@ -3,6 +3,8 @@
 import os
 import json
 import utils # Import the loading bar
+import viewerhtml
+import strutils
 
 type
   J_Thing = object of RootObj
@@ -57,6 +59,7 @@ proc get_folder(dir: string): J_Folder =
 proc save_as_json(folder: J_Folder; pretty = true) =
   if (pretty): writeFile(folder.name & "_data.json", (%*folder).pretty())
   else: writeFile(folder.name & "_data.json", $(%*folder))
+  writeViewer("data_visualizer", $(%*folder))
 
 when isMainModule:
   let current_dir = getCurrentDir() # The directory the compiled binary is in
@@ -64,8 +67,8 @@ when isMainModule:
     log_chan.open() # Open the channel
     createThread(log_thread, log_loop, current_dir) # Create the loading bar thread
     current_dir.get_folder().save_as_json() # Begin the file logging
-    log_chan.send(-1) # It's done! close the loading bar thread
-    show_loading_bar(1.0, n_steps) # Show a 100% done loading bar
   finally: # When it's done or it errors out
     stdout.flushFile() # Flush all prints to the terminal
+    log_chan.send(-1) # close the loading bar thread
     log_chan.close() # Close the channel
+  show_loading_bar(1.0, n_steps) # It's done! Show a 100% done loading bar only if it completed with no errors
