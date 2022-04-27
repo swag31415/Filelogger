@@ -4,6 +4,7 @@ import os
 import json
 import utils # Import the loading bar
 import viewerhtml
+import sequtils
 
 type
   J_Thing = object of RootObj
@@ -20,21 +21,16 @@ var log_chan: Channel[BiggestInt] # Channel to send completed file sizes
 const n_steps = 20 # Number of steps in the bar
 
 proc log_loop(dir: string) {.thread.} = # The thread loop
-  var total_size, completed: BiggestInt
+  var total_count, completed: BiggestInt
   var percent: float
 
   echo "Calculating Size..."
-  for file in walkDirRec(dir): # Calculates size asyncronusly so for small folders the main loop isn't bogged down
-    try:
-      total_size += file.getFileSize()
-    except OSError as e:
-      echo file
-  while completed < total_size:
+  total_count = toSeq(walkDirRec(dir)).len() # Calculates number of files asyncronusly so for small folders the main loop isn't bogged down
+  while completed < total_count:
     let msg = log_chan.recv()
     if msg < 0: break # If it gets a negative number break the loop
-
     completed += msg
-    percent = completed.float() / total_size.float()
+    percent = completed.float() / total_count.float()
     show_loading_bar(percent, n_steps) # Show the loading bar
 
 # Converts the provided dir into a J_Folder
@@ -47,7 +43,7 @@ proc get_folder(dir: string): J_Folder =
         let subdir = get_folder(path) # Recursively turn it into a J_Folder
         result.folders.add(subdir) # Add it to the folders seq
         result.size += subdir.size # Track its size
-        log_chan.send(subdir.size)
+        log_chan.send(1)
       of pcFile: # If its a file
         let (dir, name, ext) = splitFile(path) # Get its name and extension
         var size: BiggestInt
@@ -57,7 +53,7 @@ proc get_folder(dir: string): J_Folder =
           size = 0
         result.files.add(J_File(name:name, ext:ext, size:size)) # Convert it to a J_File and add it to the seq
         result.size += size # Track its size
-        log_chan.send(size)
+        log_chan.send(1)
       else: discard # Don't worry about symblinks and stuff
 
 # Saves the provided J_Folder to JSON. Conversion is done with ``%*``
