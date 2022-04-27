@@ -4,7 +4,6 @@ import os
 import json
 import utils # Import the loading bar
 import viewerhtml
-import strutils
 
 type
   J_Thing = object of RootObj
@@ -26,8 +25,10 @@ proc log_loop(dir: string) {.thread.} = # The thread loop
 
   echo "Calculating Size..."
   for file in walkDirRec(dir): # Calculates size asyncronusly so for small folders the main loop isn't bogged down
-    total_size += file.getFileSize()
-
+    try:
+      total_size += file.getFileSize()
+    except OSError as e:
+      echo file
   while completed < total_size:
     let msg = log_chan.recv()
     if msg < 0: break # If it gets a negative number break the loop
@@ -49,7 +50,11 @@ proc get_folder(dir: string): J_Folder =
         log_chan.send(subdir.size)
       of pcFile: # If its a file
         let (dir, name, ext) = splitFile(path) # Get its name and extension
-        let size = getFileSize(path) # Get its size
+        var size: BiggestInt
+        try:
+          size = getFileSize(path) # Get its size
+        except OSError as e:
+          size = 0
         result.files.add(J_File(name:name, ext:ext, size:size)) # Convert it to a J_File and add it to the seq
         result.size += size # Track its size
         log_chan.send(size)
@@ -67,6 +72,8 @@ when isMainModule:
     log_chan.open() # Open the channel
     createThread(log_thread, log_loop, current_dir) # Create the loading bar thread
     current_dir.get_folder().save_as_json() # Begin the file logging
+  except CatchableError as e:
+    echo e.msg
   finally: # When it's done or it errors out
     stdout.flushFile() # Flush all prints to the terminal
     log_chan.send(-1) # close the loading bar thread
