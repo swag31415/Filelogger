@@ -5,16 +5,21 @@ import json
 import utils # Import the loading bar
 import viewerhtml
 import sequtils
+import times
 
 type
   J_Thing = object of RootObj
     name: string
     size: BiggestInt
+    made: string
+    last: string
   J_File = object of J_Thing
     ext: string
   J_Folder = object of J_Thing
     folders: seq[J_Folder]
     files: seq[J_File]
+
+const time_fmt = "MMM d UUUU H:mm:ss:fffffffff"
 
 var log_thread: Thread[string] # An asyncronus loading bar
 var log_chan: Channel[BiggestInt] # Channel to send completed file sizes
@@ -46,13 +51,13 @@ proc get_folder(dir: string): J_Folder =
         log_chan.send(1)
       of pcFile: # If its a file
         let (dir, name, ext) = splitFile(path) # Get its name and extension
-        var size: BiggestInt
+        var info: os.FileInfo
         try:
-          size = getFileSize(path) # Get its size
+          info = getFileInfo(path) # Get its size
         except OSError as e:
-          size = 0
-        result.files.add(J_File(name:name, ext:ext, size:size)) # Convert it to a J_File and add it to the seq
-        result.size += size # Track its size
+          info = os.FileInfo(size:0)
+        result.files.add(J_File(name:name, ext:ext, size:info.size, made:info.creationTime.format(time_fmt), last:info.lastWriteTime.format(time_fmt))) # Convert it to a J_File and add it to the seq
+        result.size += info.size # Track its size
         log_chan.send(1)
       else: discard # Don't worry about symblinks and stuff
 
