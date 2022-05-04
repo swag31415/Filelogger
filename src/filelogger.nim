@@ -4,7 +4,6 @@ import os
 import json
 import utils # Import the loading bar
 import viewerhtml
-import sequtils
 import times
 
 type
@@ -20,23 +19,23 @@ type
     files: seq[J_File]
 
 const time_fmt = "MMM d UUUU H:mm:ss:fffffffff"
+const n_steps = 20
+var log_thread: Thread[void]
+var log_chan: Channel[int]
+var count_thread: Thread[string]
 
-var log_thread: Thread[string] # An asyncronus loading bar
-var log_chan: Channel[BiggestInt] # Channel to send completed file sizes
-const n_steps = 20 # Number of steps in the bar
+proc count_loop(dir: string) {.thread.} =
+  for f in walkDirRec(dir):
+    log_chan.send(0)
 
-proc log_loop(dir: string) {.thread.} = # The thread loop
-  var total_count, completed: BiggestInt
-  var percent: float
-
-  echo "Calculating Size..."
-  total_count = toSeq(walkDirRec(dir)).len() # Calculates number of files asyncronusly so for small folders the main loop isn't bogged down
-  while completed < total_count:
-    let msg = log_chan.recv()
-    if msg < 0: break # If it gets a negative number break the loop
-    completed += msg
-    percent = completed.float() / total_count.float()
-    show_loading_bar(percent, n_steps) # Show the loading bar
+proc log_loop() {.thread.} =
+  var total, done: BiggestInt
+  while true:
+    case log_chan.recv():
+     of 0: total += 1
+     of 1: done += 1
+     else: break
+    show_loading_bar(done, total, n_steps)
 
 # Converts the provided dir into a J_Folder
 proc get_folder(dir: string): J_Folder =
@@ -55,7 +54,7 @@ proc get_folder(dir: string): J_Folder =
         try:
           info = getFileInfo(path) # Get its size
         except OSError as e:
-          info = os.FileInfo(size:0)
+          info = os.FileInfo()
         result.files.add(J_File(name:name, ext:ext, size:info.size, made:info.creationTime.format(time_fmt), last:info.lastWriteTime.format(time_fmt))) # Convert it to a J_File and add it to the seq
         result.size += info.size # Track its size
         log_chan.send(1)
@@ -63,15 +62,17 @@ proc get_folder(dir: string): J_Folder =
 
 # Saves the provided J_Folder to JSON. Conversion is done with ``%*``
 proc save_as_json(folder: J_Folder; pretty = true) =
-  if (pretty): writeFile(folder.name & "_data.json", (%*folder).pretty())
-  else: writeFile(folder.name & "_data.json", $(%*folder))
-  writeViewer("data_visualizer", $(%*folder))
+  let J = %*folder
+  if (pretty): writeFile(folder.name & "_data.json", J.pretty())
+  else: writeFile(folder.name & "_data.json", $J)
+  writeViewer("data_visualizer", $J)
 
 when isMainModule:
   let current_dir = getCurrentDir() # The directory the compiled binary is in
   try:
     log_chan.open() # Open the channel
-    createThread(log_thread, log_loop, current_dir) # Create the loading bar thread
+    createThread(log_thread, log_loop) # Create the loading bar thread
+    createThread(count_thread, count_loop, current_dir)
     current_dir.get_folder().save_as_json() # Begin the file logging
   except CatchableError as e:
     echo e.msg
@@ -79,4 +80,4 @@ when isMainModule:
     stdout.flushFile() # Flush all prints to the terminal
     log_chan.send(-1) # close the loading bar thread
     log_chan.close() # Close the channel
-  show_loading_bar(1.0, n_steps) # It's done! Show a 100% done loading bar only if it completed with no errors
+  echo "all done"
